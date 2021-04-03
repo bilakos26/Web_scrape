@@ -1,13 +1,17 @@
+import requests
+from time import sleep
+import time
+from bs4 import BeautifulSoup as bs
 import os
-import sys 
+import sys
+from random import randint
 from selenium import webdriver
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
-from time import sleep
-import requests
-import time
+from selenium.webdriver.support.ui import WebDriverWait
 import xlsxwriter
+
 
 def main():
     start_time = time.time()
@@ -124,13 +128,15 @@ def extract_urls(browser, link, path, text):
             print('Τα urls περαστήκανε με επιτυχία.')
             print('')
 
+
 #Here it extracts the information of the urls like: names, addresses, etc
 def extract_informations(browser, path, text):
     print("Ποιά είναι η πόλη που θέλετε να κάνετε εξαγωγή τα δεδομένα; (π.χ. Λάρισα)")
     city = input("Δώσε την ονομασία της πόλης: ")
     print(""*2)
     ex_f = open(path + "\\" + text + "\\extracted_links.txt", 'r')
-    url = ex_f.readline()
+    URL = ex_f.readline()
+    URL = URL.rstrip('\n')
     count = 0
     #EXCEL
     workbook = xlsxwriter.Workbook(path + "\\" + text + f"\\{text}.xlsx")
@@ -140,51 +146,37 @@ def extract_informations(browser, path, text):
     worksheet.write("B1", "ΤΟΠΟΘΕΣΙΑ", bold)
     worksheet.write('C1', 'ΤΗΛΕΦΩΝΟ', bold)
     extraction = []
-    while url != '':
-        browser.get(url)
-        browser.implicitly_wait(15)
-        sleep(3)
+    while URL != '':
+        data = requests.get(URL)
+        print(data)
+        soup = bs(data.content, 'html.parser')
+        sleep(randint(10, 15))
         try:
             #Address
-            address = browser.find_element_by_class_name("streetAddressProf")
-            address = address.text
+            address = soup.find_all('span', {'class':'streetAddressProf'})[0].text
             if city in address:
                 #Name
-                name = browser.find_element_by_id("ProfileLabel")
-                name = name.text
+                name = soup.find_all('h1', {'id':'ProfileLabel'})[0].text
                 #Telephone number
                 links2 = []
                 try:
-                    elements = browser.find_elements_by_xpath('//a[@data-event="phone1.profile"]')
-                    for elem in elements:
-                        urls = elem.text
-                        elements = browser.find_elements_by_xpath('//a[@data-event="phone1.profile"]')
-                        if urls not in links2:
-                            links2.append(urls)
+                    tel1 = soup.find_all('a', {'data-event':'phone1.profile'})[0].text
+                    if tel1 not in links2:
+                        links2.append(tel1)
                 except Exception:
-                    elements = browser.find_elements_by_xpath('//a[@data-event="mobile.profile"]')
-                    for elem in elements:
-                        urls = elem.text
-                        elements = browser.find_elements_by_xpath('//a[@data-event="mobile.profile"]')
-                        if urls not in links2:
-                            links2.append(urls)
+                    tel1 = soup.find_all('a', {'data-event':'mobile.profile'})[0].text
+                    if tel1 not in links2:
+                        links2.append(tel1)
                 #More tel numbers (βρίσκει αν υπάρχει και δευτερο νουμερο τηλεφωνου)
                 try:
-                    browser.find_element_by_class_name("btnphone.et-v2").click()
-                    sleep(2)
-                    elements2 = browser.find_elements_by_xpath('//a[@data-event="phone2.profile"]')
-                    for elem in elements2:
-                        urls = elem.text
-                        elements2 = browser.find_elements_by_xpath('//a[@data-event="phone2.profile"]')
-                        elements2 = browser.find_elements_by_xpath('//a[@data-event="mobile.profile"]')
-                        if urls not in links2:
-                            links2.append(urls)
-                    elements3 = browser.find_elements_by_xpath('//a[@data-event="mobile.profile"]')
-                    for elem in elements3:
-                        urls = elem.text
-                        elements3 = browser.find_elements_by_xpath('//a[@data-event="mobile.profile"]')
-                        if urls not in links2:
-                            links2.append(urls)
+                    try:
+                        tel2 = soup.find_all('a', {'data-event':'phone2.profile'})[0].text
+                        if tel2 not in links2:
+                            links2.append(tel2)
+                    except Exception:
+                        tel2 = soup.find_all('a', {'data-event':'mobile.profile'})[0].text
+                        if tel2 not in links2:
+                            links2.append(tel2)
                     count += 1
                     print('%.f) Όνομα: '%(count), name, '\nΤοποθεσία: ', address, f'\nΤηλέφωνο: {links2}')
                     print("")
@@ -199,12 +191,16 @@ def extract_informations(browser, path, text):
                     extraction.append(name)
                     extraction.append(address)
                     extraction.append(links2)
-                url = ex_f.readline()
+                URL = ex_f.readline()
+                URL = URL.rstrip('\n')
             else:
-                url = ex_f.readline()
-        except Exception:
-            sleep(3)
-            url = ex_f.readline()
+                URL = ex_f.readline()
+                URL = URL.rstrip('\n')
+        except Exception as Err:
+            print(Err)
+            print()
+            URL = ex_f.readline()
+            URL = URL.rstrip('\n')
     ex_f.close()
     count = 0
     True_1 = False
@@ -214,7 +210,6 @@ def extract_informations(browser, path, text):
         col_count = 0
         for i in extraction:
             count += 1
-            print("col_count = ", col_count)
             if count == 3:
                 try:
                     if True_1 == False:
@@ -225,14 +220,12 @@ def extract_informations(browser, path, text):
                         if col_count == 0:
                             worksheet.write(f"C{col_count+2}", str(i_1))
                             worksheet.write(f"C{col_count + 3}", str(i_2))
-                            print("7")
                             True_1 = True
                             True_2 = False
                             col_count += 2
                         else:
                             worksheet.write(f"C{col_count+1}", str(i_1))
                             worksheet.write(f"C{col_count + 2}", str(i_2))
-                            print("7")
                             True_1 = True
                             True_2 = False
                             col_count += 1
@@ -243,7 +236,6 @@ def extract_informations(browser, path, text):
                         text_f.write(str(i_2) + "\n")
                         worksheet.write(f"C{col_count + 2}", str(i_1))
                         worksheet.write(f"C{col_count + 3}", str(i_2))
-                        print("6")
                         True_1 = True
                         True_2 = False
                         col_count += 2
@@ -261,7 +253,6 @@ def extract_informations(browser, path, text):
                         col_count += 1
                     True_1 = False
                     True_2 = True
-                    print("5")
                 count = 0
             elif count == 2:
                 if True_1 == True:
@@ -270,7 +261,6 @@ def extract_informations(browser, path, text):
                     i = i.strip("']")
                     text_f.write(str(i) + "\n")
                     worksheet.write(f"B{col_count + 2}", str(i))
-                    print("4")
                 else:
                     i = str(i)
                     i = i.strip("['")
@@ -280,7 +270,6 @@ def extract_informations(browser, path, text):
                         worksheet.write(f"B{col_count+2}", str(i))
                     else:
                         worksheet.write(f"B{col_count+1}", str(i))
-                    print("3")
             else:
                 if True_1 == True:
                     i = str(i)
@@ -288,7 +277,6 @@ def extract_informations(browser, path, text):
                     i = i.strip("']")
                     text_f.write(str(i) + "\n")
                     worksheet.write(f"A{col_count + 2}", str(i))
-                    print("2")
                 else:
                     i = str(i)
                     i = i.strip("['")
@@ -298,7 +286,6 @@ def extract_informations(browser, path, text):
                         worksheet.write(f"A{col_count+2}", str(i))
                     else:
                         worksheet.write(f"A{col_count+1}", str(i))
-                    print("1")
     workbook.close()
 
 
@@ -316,6 +303,7 @@ def question(browser, link, path, text):
         extract_urls(browser, link, path, text)
     else:
         extract_informations(browser, path, text)
+
 
 def name(browser, link):
     name_ = browser.find_element_by_xpath("""//*[@id="MainSearchContainer"]/div/div[1]/div[1]/h1""")
